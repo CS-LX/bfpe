@@ -34,6 +34,7 @@ class Signature:
     c_name: str
     params: list[Param] = field(default_factory=list)
     io_mode: str = "buffer"
+    is_entry: bool = False
     program_symbol: str = ""
     source_name: str = ""
 
@@ -106,12 +107,13 @@ def parse_signature_line(line: str) -> tuple[str, str, list[Param]]:
     return return_type, c_name, params
 
 
-def parse_directives(source: str) -> tuple[str | None, str | None, list[Param], str | None, bool]:
+def parse_directives(source: str) -> tuple[str | None, str | None, list[Param], str | None, bool, bool]:
     export_name: str | None = None
     signature_line: str | None = None
     params: list[Param] = []
     io_mode: str | None = None
     legacy_output = False
+    is_entry = False
 
     for raw_line in source.splitlines():
         if ";" not in raw_line:
@@ -142,6 +144,7 @@ def parse_directives(source: str) -> tuple[str | None, str | None, list[Param], 
             continue
 
         if payload == "entry":
+            is_entry = True
             continue
 
         try:
@@ -152,12 +155,12 @@ def parse_directives(source: str) -> tuple[str | None, str | None, list[Param], 
         signature_line = payload
         params = parsed_params
 
-    return export_name, signature_line, params, io_mode, legacy_output
+    return export_name, signature_line, params, io_mode, legacy_output, is_entry
 
 
 def parse_file(path: Path) -> Signature:
     source = path.read_text(encoding="utf-8")
-    export_name, signature_line, params, io_mode, legacy_output = parse_directives(source)
+    export_name, signature_line, params, io_mode, legacy_output, is_entry = parse_directives(source)
 
     if legacy_output and export_name is None and signature_line is None:
         stem = path.stem.replace("-", "_").title().replace("_", "")
@@ -184,6 +187,7 @@ def parse_file(path: Path) -> Signature:
         c_name=c_name,
         params=params,
         io_mode=io_mode,
+        is_entry=is_entry,
         program_symbol=program_symbol_from_path(path),
         source_name=path.name,
     )

@@ -125,10 +125,19 @@ def generate_export_body(sig: Signature, program_symbol: str) -> list[str]:
     ]
 
 
-def generate_header(programs: list[dict[str, object]]) -> str:
+def generate_header(programs: list[dict[str, object]], *, pe_kind: str) -> str:
     sigs = [program["signature"] for program in programs]
     declarations = [generate_header_decl(sig) + ";" for sig in sigs]
     body = "\n".join(declarations) if declarations else "/* No generated exports. */"
+    api_block = (
+        "#define BFDLL_API\n"
+        if pe_kind == "exe"
+        else "#ifdef BFDLL_EXPORTS\n"
+        "#define BFDLL_API __declspec(dllexport)\n"
+        "#else\n"
+        "#define BFDLL_API __declspec(dllimport)\n"
+        "#endif\n"
+    )
     return (
         "/* AUTO-GENERATED - DO NOT EDIT */\n"
         "#ifndef BF_EXPORTS_GEN_H\n"
@@ -138,12 +147,7 @@ def generate_header(programs: list[dict[str, object]]) -> str:
         "extern \"C\" {\n"
         "#endif\n"
         "\n"
-        "#ifdef BFDLL_EXPORTS\n"
-        "#define BFDLL_API __declspec(dllexport)\n"
-        "#else\n"
-        "#define BFDLL_API __declspec(dllimport)\n"
-        "#endif\n"
-        "\n"
+        f"{api_block}\n"
         f"{body}\n"
         "\n"
         "#ifdef __cplusplus\n"
@@ -173,21 +177,83 @@ def generate_source(programs: list[dict[str, object]]) -> str:
     return "\n".join(parts)
 
 
-def build_manifest(programs: list[dict[str, object]], dll_path: Path) -> dict[str, object]:
+def generate_exe_main(sig: Signature) -> str:
+    parts = [
+        "/* AUTO-GENERATED - DO NOT EDIT */",
+        "#include <stdio.h>",
+        "#include <stdlib.h>",
+        '#include "bf_exports.gen.h"',
+        "",
+    ]
+
+    if sig.return_type == "int":
+        parts.append("int main(int argc, char** argv)")
+        parts.append("{")
+        if sig.params:
+            expected = len(sig.params) + 1
+            parts.append(f"    if (argc < {expected}) {{")
+            parts.append(
+                f'        fprintf(stderr, "usage: %s {" ".join(p.name for p in sig.params)}\\n", argv[0]);'
+            )
+            parts.append("        return 1;")
+            parts.append("    }")
+            for index, param in enumerate(sig.params, start=1):
+                parts.append(f"    int {param.name} = atoi(argv[{index}]);")
+            arg_list = ", ".join(param.name for param in sig.params)
+            parts.append(f"    printf(\"%d\\n\", {sig.export_symbol}({arg_list}));")
+        else:
+            parts.append(f"    printf(\"%d\\n\", {sig.export_symbol}());")
+        parts.extend(["    return 0;", "}"])
+        return "\n".join(parts)
+
+    if sig.return_type == "const char*":
+        parts.extend(
+            [
+                "int main(void)",
+                "{",
+                f"    const char* out = {sig.export_symbol}();",
+                '    if (out && out[0]) {',
+                '        printf("%s\\n", out);',
+                "    }",
+                "    return 0;",
+                "}",
+            ]
+        )
+        return "\n".join(parts)
+
+    parts.extend(
+        [
+            "int main(void)",
+            "{",
+            f"    {sig.export_symbol}();",
+            "    return 0;",
+            "}",
+        ]
+    )
+    return "\n".join(parts)
+
+
+def build_manifest(
+    programs: list[dict[str, object]], pe_path: Path, *, pe_kind: str
+) -> dict[str, object]:
     runtime_exports = ["BF_GetLastOutput", "BF_SetOutputCallback"]
     generated_exports = [str(program["export_symbol"]) for program in programs]
+    exports = generated_exports + (runtime_exports if pe_kind == "dll" else [])
     return {
-        "pe_path": str(dll_path.resolve()),
-        "pe_kind": "dll",
-        "exports": generated_exports + runtime_exports,
+        "pe_path": str(pe_path.resolve()),
+        "pe_kind": pe_kind,
+        "exports": exports,
         "programs": [
             {
                 "source": program["source_name"],
                 "program_symbol": program["program_symbol"],
+                "export_name": program["signature"].export_name,
                 "export_symbol": program["export_symbol"],
                 "core_pattern": program["core_pattern"],
                 "return_type": program["signature"].return_type,
                 "io_mode": program["signature"].io_mode,
+                "is_entry": program["signature"].is_entry,
+                "param_count": len(program["signature"].params),
             }
             for program in programs
         ],
@@ -201,7 +267,15 @@ def main() -> int:
     parser.add_argument("--header", type=Path, help="Output generated C header path")
     parser.add_argument("--source", type=Path, help="Output generated C source path")
     parser.add_argument("--manifest", type=Path, help="Output build manifest JSON path")
-    parser.add_argument("--dll-path", type=Path, help="Expected DLL path for manifest")
+    parser.add_argument("--pe-path", type=Path, help="Expected PE output path for manifest")
+    parser.add_argument("--dll-path", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--pe-kind",
+        choices=("dll", "exe"),
+        default="dll",
+        help="PE kind for manifest/header generation",
+    )
+    parser.add_argument("--exe-main", type=Path, help="Output generated EXE main path")
     args = parser.parse_args()
 
     programs: list[dict[str, object]] = []
@@ -220,15 +294,22 @@ def main() -> int:
 
     if args.header:
         args.header.parent.mkdir(parents=True, exist_ok=True)
-        args.header.write_text(generate_header(programs), encoding="utf-8")
+        args.header.write_text(generate_header(programs, pe_kind=args.pe_kind), encoding="utf-8")
     if args.source:
         args.source.parent.mkdir(parents=True, exist_ok=True)
         args.source.write_text(generate_source(programs), encoding="utf-8")
+    if args.exe_main:
+        if len(programs) != 1:
+            print("error: EXE main generation requires exactly one .bf input", file=sys.stderr)
+            return 1
+        sig: Signature = programs[0]["signature"]
+        args.exe_main.parent.mkdir(parents=True, exist_ok=True)
+        args.exe_main.write_text(generate_exe_main(sig), encoding="utf-8")
     if args.manifest:
-        dll_path = args.dll_path or Path("out.dll")
+        pe_path = args.pe_path or args.dll_path or Path("out.dll")
         args.manifest.parent.mkdir(parents=True, exist_ok=True)
         args.manifest.write_text(
-            json.dumps(build_manifest(programs, dll_path), indent=2),
+            json.dumps(build_manifest(programs, pe_path, pe_kind=args.pe_kind), indent=2),
             encoding="utf-8",
         )
 

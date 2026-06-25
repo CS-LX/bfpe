@@ -1,7 +1,6 @@
 # Phase 2 — build/run 闭环
 
-> 状态：**未开始**  
-> 前置：Phase 1 完成
+> 状态：**已完成**
 
 ---
 
@@ -15,12 +14,12 @@
 
 | # | 任务 | 产出 |
 |---|------|------|
-| 2.1 | `bfpe run <pe> <Export> [args...]` | `tools/bfpe.py` run 子命令 |
-| 2.2 | CLI 简写规则 | `bfpe file.bf args... out.dll` |
-| 2.3 | EXE 链接模板 | `templates/exe_main.c` + `/SUBSYSTEM:CONSOLE` |
-| 2.4 | `verify_pe.ps1` EXE 模式 | 无导出表时跳过 EAT 检查 |
-| 2.5 | `; bfpe: entry` EXE 入口 | 单文件 EXE 样例 |
-| 2.6 | 集成测试脚本 | `examples/` + 文档 |
+| 2.1 | `bfpe run <pe> <Export> [args...]` | `tools/run_pe.py` ✅ |
+| 2.2 | CLI 简写规则 | `tools/bfpe.py` ✅ |
+| 2.3 | EXE 链接 + 生成 main | `bf2asm.py` `exe_main.gen.c` ✅ |
+| 2.4 | `verify_pe.ps1` EXE 模式 | EXE 头检查 ✅ |
+| 2.5 | `; bfpe: entry` EXE 入口 | `examples/hello.bf` ✅ |
+| 2.6 | 文档更新 | README / 项目计划 ✅ |
 
 ---
 

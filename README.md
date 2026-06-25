@@ -27,7 +27,7 @@ BFPE 不是 Brainfuck 解释器的普通打包，而是：
 
 ## 项目状态
 
-🚧 **Phase 1 已完成** — 签名 DSL + I/O 流；下一步 Phase 2（`bfpe run`）。见 [docs/项目计划.md](docs/项目计划.md)。
+🚧 **Phase 2 已完成** — `bfpe build/run` 闭环 + EXE；下一步 Phase 3。见 [docs/项目计划.md](docs/项目计划.md)。
 
 | 能力 | reference | bfpe 目标 |
 |------|-----------|-----------|
@@ -188,15 +188,21 @@ cd build/bin/Release
 .\test_host.exe
 ```
 
-**bfpe build（Phase 1）：**
+**bfpe build / run（Phase 2）：**
 
 ```powershell
 python tools/bfpe.py build examples/add.bf -o build/add.dll
-python tools/bfpe.py build examples/hello.bf -o build/hello.dll
-python tools/bfpe.py build examples/hello_world.bf -o build/hello_world.dll
+python tools/bfpe.py run build/add.dll Add 3 5          # 输出 8
+
+python tools/bfpe.py build examples/hello.bf -o build/hello.exe
+python tools/bfpe.py run build/hello.exe Hello          # stdout: Hi
+
+# 简写
+python tools/bfpe.py examples/add.bf -o build/add.dll
+python tools/bfpe.py examples/add.bf 3 5 build/add.dll
 ```
 
-`.bf` 头部使用 `; bfpe:` 签名 DSL（仍兼容 `; bfdll: export=output`）。
+`.bf` 头部使用 `; bfpe:` 签名 DSL；生成 `.exe` 须含 `; bfpe: entry`。
 
 ---
 
@@ -228,6 +234,7 @@ python tools/bfpe.py build examples/hello_world.bf -o build/hello_world.dll
 | [docs/项目计划.md](docs/项目计划.md) | 分阶段实施计划（Phase 0–3） |
 | [docs/plans/phase-0.md](docs/plans/phase-0.md) | Phase 0：最小 build 闭环 |
 | [docs/plans/phase-1.md](docs/plans/phase-1.md) | Phase 1：签名 DSL 与 I/O 流 |
+| [docs/plans/phase-2.md](docs/plans/phase-2.md) | Phase 2：build/run 闭环 + EXE |
 | [docs/可行性报告.md](docs/可行性报告.md) | BFPE 四项需求的可行性分析与实施路线 |
 | [reference/Brainfuck-in-PE/docs/实验报告.md](reference/Brainfuck-in-PE/docs/实验报告.md) | reference 实验结论与验收记录 |
 | [reference/Brainfuck-in-PE/docs/实现方案.md](reference/Brainfuck-in-PE/docs/实现方案.md) | PE 布局与模块设计（bfpe 继承） |

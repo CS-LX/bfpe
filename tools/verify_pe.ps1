@@ -107,6 +107,11 @@ if ($peKind -eq "dll") {
         }
     }
     Write-Host "[OK] Required exports present"
+} elseif ($peKind -eq "exe") {
+    if (($pe.Characteristics -band 0x2000) -ne 0) {
+        throw "EXE must not set IMAGE_FILE_DLL"
+    }
+    Write-Host "[OK] PE headers indicate EXE (export table check skipped)"
 } else {
     Write-Host "[OK] PE kind=$peKind (export table check skipped)"
 }

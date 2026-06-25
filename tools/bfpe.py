@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""BFPE command-line tool — build .bf sources into verified PE DLLs."""
+"""BFPE command-line tool — build and run Brainfuck-in-PE artifacts."""
 
 from __future__ import annotations
 
@@ -16,12 +16,17 @@ RUNTIME = ROOT / "runtime"
 CODEGEN = ROOT / "tools" / "codegen" / "bf2asm.py"
 VERIFY_SCRIPT = ROOT / "tools" / "verify_pe.ps1"
 
-RUNTIME_SOURCES = [
+sys.path.insert(0, str(ROOT / "tools" / "codegen"))
+from parse_sig import parse_file  # noqa: E402
+
+sys.path.insert(0, str(ROOT / "tools"))
+from run_pe import run_pe  # noqa: E402
+
+RUNTIME_CORE = [
     RUNTIME / "vm" / "bf_vm.c",
     RUNTIME / "bf_io.c",
     RUNTIME / "bf_export_runtime.c",
     RUNTIME / "bf_stub.c",
-    RUNTIME / "dllmain.c",
 ]
 
 RUNTIME_INCLUDES = [
@@ -130,24 +135,37 @@ def write_def(path: Path, library_name: str, exports: list[str]) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def load_manifest_programs(manifest_path: Path) -> list[dict[str, object]]:
-    data = json.loads(manifest_path.read_text(encoding="utf-8"))
-    return list(data.get("programs", []))
+def pe_kind_for_output(output: Path) -> str:
+    suffix = output.suffix.lower()
+    if suffix == ".dll":
+        return "dll"
+    if suffix == ".exe":
+        return "exe"
+    raise ValueError(f"unsupported output extension: {suffix} (expected .dll or .exe)")
 
 
-def cmd_build(args: argparse.Namespace) -> int:
-    if len(args.inputs) != 1:
-        eprint("error: build supports exactly one .bf input in Phase 1")
-        return 1
-
-    bf_path = args.inputs[0].resolve()
-    output = args.output.resolve()
-
+def cmd_build(bf_path: Path, output: Path) -> int:
     if not bf_path.is_file():
         eprint(f"error: {bf_path} not found")
         return 1
-    if output.suffix.lower() != ".dll":
-        eprint("error: output must be a .dll file")
+
+    try:
+        pe_kind = pe_kind_for_output(output)
+    except ValueError as exc:
+        eprint(f"error: {exc}")
+        return 1
+
+    bf_path = bf_path.resolve()
+    output = output.resolve()
+
+    try:
+        signature = parse_file(bf_path)
+    except ValueError as exc:
+        eprint(f"error: {exc}")
+        return 1
+
+    if pe_kind == "exe" and not signature.is_entry:
+        eprint(f"error: EXE build requires '; bfpe: entry' in {bf_path.name}")
         return 1
 
     build_dir = ROOT / ".bfpe-build" / output.stem
@@ -160,39 +178,36 @@ def cmd_build(args: argparse.Namespace) -> int:
     gen_asm = gen_dir / "bf_programs.asm"
     gen_header = gen_dir / "bf_exports.gen.h"
     gen_source = gen_dir / "bf_exports.gen.c"
+    gen_exe_main = gen_dir / "exe_main.gen.c"
     manifest_path = build_dir / "manifest.json"
     def_path = build_dir / f"{output.stem}.def"
 
-    python = sys.executable
-    run_cmd(
-        [
-            python,
-            str(CODEGEN),
-            str(bf_path),
-            "-o",
-            str(gen_asm),
-            "--header",
-            str(gen_header),
-            "--source",
-            str(gen_source),
-            "--manifest",
-            str(manifest_path),
-            "--dll-path",
-            str(output),
-        ]
-    )
+    codegen_cmd = [
+        sys.executable,
+        str(CODEGEN),
+        str(bf_path),
+        "-o",
+        str(gen_asm),
+        "--header",
+        str(gen_header),
+        "--source",
+        str(gen_source),
+        "--manifest",
+        str(manifest_path),
+        "--pe-path",
+        str(output),
+        "--pe-kind",
+        pe_kind,
+    ]
+    if pe_kind == "exe":
+        codegen_cmd.extend(["--exe-main", str(gen_exe_main)])
+    run_cmd(codegen_cmd)
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    generated_exports = [
-        str(program["export_symbol"])
-        for program in manifest["programs"]
-        if program.get("export_symbol")
-    ]
+    generated_exports = [str(program["export_symbol"]) for program in manifest["programs"]]
     if not generated_exports:
         eprint("error: no exports generated from .bf input")
         return 1
-
-    write_def(def_path, output.stem, generated_exports + BASE_RUNTIME_EXPORTS)
 
     env = msvc_env()
     ml64 = resolve_tool("ml64.exe", env)
@@ -213,8 +228,14 @@ def cmd_build(args: argparse.Namespace) -> int:
     for include in RUNTIME_INCLUDES + [gen_dir]:
         compile_flags.extend(["/I", str(include)])
 
+    c_sources = [*RUNTIME_CORE, gen_source]
+    if pe_kind == "dll":
+        c_sources.append(RUNTIME / "dllmain.c")
+    else:
+        c_sources.append(gen_exe_main)
+
     c_objects: list[Path] = []
-    for source in [*RUNTIME_SOURCES, gen_source]:
+    for source in c_sources:
         obj_path = obj_dir / f"{source.stem}.obj"
         run_cmd([*compile_flags, f"/Fo{obj_path}", str(source)], env=env)
         c_objects.append(obj_path)
@@ -227,14 +248,22 @@ def cmd_build(args: argparse.Namespace) -> int:
     link_args = [
         link,
         "/nologo",
-        "/DLL",
         f"/OUT:{output}",
-        f"/DEF:{def_path}",
-        "/SUBSYSTEM:WINDOWS",
         "/MERGE:bf_text=.text",
         *include_flags,
         *[str(obj) for obj in [asm_obj, *c_objects]],
     ]
+
+    if pe_kind == "dll":
+        write_def(def_path, output.stem, generated_exports + BASE_RUNTIME_EXPORTS)
+        link_args[2:2] = [
+            "/DLL",
+            f"/DEF:{def_path}",
+            "/SUBSYSTEM:WINDOWS",
+        ]
+    else:
+        link_args.insert(2, "/SUBSYSTEM:CONSOLE")
+
     run_cmd(link_args, env=env)
 
     manifest["pe_path"] = str(output)
@@ -256,17 +285,66 @@ def cmd_build(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_run(pe_path: Path, export_name: str, run_args: list[str]) -> int:
+    try:
+        return run_pe(ROOT, pe_path, export_name, run_args)
+    except (FileNotFoundError, ValueError) as exc:
+        eprint(f"error: {exc}")
+        return 1
+
+
+def try_shorthand(argv: list[str]) -> int | None:
+    if not argv or argv[0] in ("build", "run", "-h", "--help"):
+        return None
+
+    if "-o" in argv:
+        out_index = argv.index("-o")
+        if out_index + 1 >= len(argv):
+            eprint("error: shorthand build: bfpe <file.bf> -o <out.pe>")
+            return 1
+        bf_path = Path(argv[0])
+        output = Path(argv[out_index + 1])
+        return cmd_build(bf_path, output)
+
+    if len(argv) >= 2:
+        pe_path = Path(argv[-1])
+        if pe_path.suffix.lower() in (".dll", ".exe") and pe_path.exists():
+            bf_path = Path(argv[0])
+            if bf_path.suffix.lower() != ".bf":
+                return None
+            try:
+                signature = parse_file(bf_path)
+            except ValueError as exc:
+                eprint(f"error: {exc}")
+                return 1
+            run_args = argv[1:-1]
+            return cmd_run(pe_path, signature.export_name, run_args)
+
+    return None
+
+
 def main() -> int:
+    shorthand = try_shorthand(sys.argv[1:])
+    if shorthand is not None:
+        return shorthand
+
     parser = argparse.ArgumentParser(prog="bfpe", description="Brainfuck-in-PE toolchain")
     subparsers = parser.add_subparsers(dest="command")
 
-    build_parser = subparsers.add_parser("build", help="Build .bf into a PE DLL")
-    build_parser.add_argument("inputs", nargs="+", type=Path, help=".bf source file(s)")
-    build_parser.add_argument("-o", "--output", type=Path, required=True, help="Output .dll path")
+    build_parser = subparsers.add_parser("build", help="Build .bf into a PE DLL or EXE")
+    build_parser.add_argument("input", type=Path, help=".bf source file")
+    build_parser.add_argument("-o", "--output", type=Path, required=True, help="Output .dll/.exe")
+
+    run_parser = subparsers.add_parser("run", help="Run a built PE")
+    run_parser.add_argument("pe", type=Path, help="Path to .dll or .exe")
+    run_parser.add_argument("export", help="Export name (e.g. Add, Hello)")
+    run_parser.add_argument("args", nargs="*", help="Integer arguments for exported function")
 
     args = parser.parse_args()
     if args.command == "build":
-        return cmd_build(args)
+        return cmd_build(args.input, args.output)
+    if args.command == "run":
+        return cmd_run(args.pe, args.export, args.args)
 
     parser.print_help()
     return 1
