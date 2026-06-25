@@ -3,9 +3,14 @@
 
 from __future__ import annotations
 
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+
+_CODEGEN = Path(__file__).resolve().parent
+if str(_CODEGEN) not in sys.path:
+    sys.path.insert(0, str(_CODEGEN))
 
 from parse_sig import Signature, parse_file, parse_signature_line
 

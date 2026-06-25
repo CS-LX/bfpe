@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Unit tests
+        shell: pwsh
+        run: |
+          python tools/codegen/test_parse_sig.py
+          python tools/codegen/test_bf2asm.py
+
+      - name: Build multi-export DLL
+        shell: pwsh
+        run: |
+          python tools/bfpe.py build examples/add.bf examples/hello_world.bf -o build/bfpe_lib.dll
+
+      - name: exec and run
+        shell: pwsh
+        run: |
+          $out = python tools/bfpe.py exec examples/add.bf 3 5
+          if ($out -ne "8") { throw "exec add: expected 8, got $out" }
+          $out = python tools/bfpe.py run build/bfpe_lib.dll Add 3 5
+          if ($out -ne "8") { throw "run Add: expected 8, got $out" }

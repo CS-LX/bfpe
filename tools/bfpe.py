@@ -21,6 +21,7 @@ from parse_sig import parse_file  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "tools"))
 from run_pe import run_pe  # noqa: E402
+from exec_bf import BfError, exec_bf  # noqa: E402
 
 RUNTIME_CORE = [
     RUNTIME / "vm" / "bf_vm.c",
@@ -144,10 +145,15 @@ def pe_kind_for_output(output: Path) -> str:
     raise ValueError(f"unsupported output extension: {suffix} (expected .dll or .exe)")
 
 
-def cmd_build(bf_path: Path, output: Path) -> int:
-    if not bf_path.is_file():
-        eprint(f"error: {bf_path} not found")
+def cmd_build(bf_paths: list[Path], output: Path) -> int:
+    if not bf_paths:
+        eprint("error: no .bf inputs")
         return 1
+
+    for bf_path in bf_paths:
+        if not bf_path.is_file():
+            eprint(f"error: {bf_path} not found")
+            return 1
 
     try:
         pe_kind = pe_kind_for_output(output)
@@ -155,18 +161,21 @@ def cmd_build(bf_path: Path, output: Path) -> int:
         eprint(f"error: {exc}")
         return 1
 
-    bf_path = bf_path.resolve()
+    bf_paths = [path.resolve() for path in bf_paths]
     output = output.resolve()
 
-    try:
-        signature = parse_file(bf_path)
-    except ValueError as exc:
-        eprint(f"error: {exc}")
-        return 1
-
-    if pe_kind == "exe" and not signature.is_entry:
-        eprint(f"error: EXE build requires '; bfpe: entry' in {bf_path.name}")
-        return 1
+    if pe_kind == "exe":
+        if len(bf_paths) != 1:
+            eprint("error: EXE build supports exactly one .bf input")
+            return 1
+        try:
+            signature = parse_file(bf_paths[0])
+        except ValueError as exc:
+            eprint(f"error: {exc}")
+            return 1
+        if not signature.is_entry:
+            eprint(f"error: EXE build requires '; bfpe: entry' in {bf_paths[0].name}")
+            return 1
 
     build_dir = ROOT / ".bfpe-build" / output.stem
     gen_dir = build_dir / "gen"
@@ -185,7 +194,7 @@ def cmd_build(bf_path: Path, output: Path) -> int:
     codegen_cmd = [
         sys.executable,
         str(CODEGEN),
-        str(bf_path),
+        *[str(path) for path in bf_paths],
         "-o",
         str(gen_asm),
         "--header",
@@ -201,7 +210,10 @@ def cmd_build(bf_path: Path, output: Path) -> int:
     ]
     if pe_kind == "exe":
         codegen_cmd.extend(["--exe-main", str(gen_exe_main)])
-    run_cmd(codegen_cmd)
+    try:
+        run_cmd(codegen_cmd)
+    except RuntimeError:
+        return 1
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     generated_exports = [str(program["export_symbol"]) for program in manifest["programs"]]
@@ -293,18 +305,26 @@ def cmd_run(pe_path: Path, export_name: str, run_args: list[str]) -> int:
         return 1
 
 
+def cmd_exec(bf_path: Path, run_args: list[str]) -> int:
+    try:
+        return exec_bf(bf_path, run_args)
+    except (BfError, ValueError) as exc:
+        eprint(f"error: {exc}")
+        return 1
+
+
 def try_shorthand(argv: list[str]) -> int | None:
-    if not argv or argv[0] in ("build", "run", "-h", "--help"):
+    if not argv or argv[0] in ("build", "run", "exec", "-h", "--help"):
         return None
 
     if "-o" in argv:
         out_index = argv.index("-o")
         if out_index + 1 >= len(argv):
-            eprint("error: shorthand build: bfpe <file.bf> -o <out.pe>")
+            eprint("error: shorthand build: bfpe <file.bf> [...] -o <out.pe>")
             return 1
-        bf_path = Path(argv[0])
+        bf_paths = [Path(arg) for arg in argv[:out_index]]
         output = Path(argv[out_index + 1])
-        return cmd_build(bf_path, output)
+        return cmd_build(bf_paths, output)
 
     if len(argv) >= 2:
         pe_path = Path(argv[-1])
@@ -320,6 +340,10 @@ def try_shorthand(argv: list[str]) -> int | None:
             run_args = argv[1:-1]
             return cmd_run(pe_path, signature.export_name, run_args)
 
+        bf_path = Path(argv[0])
+        if bf_path.suffix.lower() == ".bf" and bf_path.is_file():
+            return cmd_exec(bf_path, argv[1:])
+
     return None
 
 
@@ -332,7 +356,7 @@ def main() -> int:
     subparsers = parser.add_subparsers(dest="command")
 
     build_parser = subparsers.add_parser("build", help="Build .bf into a PE DLL or EXE")
-    build_parser.add_argument("input", type=Path, help=".bf source file")
+    build_parser.add_argument("inputs", nargs="+", type=Path, help=".bf source file(s)")
     build_parser.add_argument("-o", "--output", type=Path, required=True, help="Output .dll/.exe")
 
     run_parser = subparsers.add_parser("run", help="Run a built PE")
@@ -340,11 +364,17 @@ def main() -> int:
     run_parser.add_argument("export", help="Export name (e.g. Add, Hello)")
     run_parser.add_argument("args", nargs="*", help="Integer arguments for exported function")
 
+    exec_parser = subparsers.add_parser("exec", help="Execute .bf in memory (no PE)")
+    exec_parser.add_argument("input", type=Path, help=".bf source file")
+    exec_parser.add_argument("args", nargs="*", help="Integer arguments")
+
     args = parser.parse_args()
     if args.command == "build":
-        return cmd_build(args.input, args.output)
+        return cmd_build(list(args.inputs), args.output)
     if args.command == "run":
         return cmd_run(args.pe, args.export, args.args)
+    if args.command == "exec":
+        return cmd_exec(args.input, args.args)
 
     parser.print_help()
     return 1

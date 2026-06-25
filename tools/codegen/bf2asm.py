@@ -53,6 +53,35 @@ def load_program(bf_path: Path) -> dict[str, object]:
     }
 
 
+def validate_export_uniqueness(programs: list[dict[str, object]]) -> None:
+    by_name: dict[str, str] = {}
+    by_symbol: dict[str, str] = {}
+    for program in programs:
+        sig: Signature = program["signature"]
+        source = str(program["source_name"])
+        key = sig.export_name.lower()
+        if key in by_name:
+            raise ValueError(
+                f"duplicate export name {sig.export_name!r} in {source} and {by_name[key]}"
+            )
+        by_name[key] = source
+        if sig.export_symbol in by_symbol:
+            raise ValueError(
+                f"duplicate export symbol {sig.export_symbol} in {source} and {by_symbol[sig.export_symbol]}"
+            )
+        by_symbol[sig.export_symbol] = source
+
+
+def load_programs(bf_paths: list[Path]) -> list[dict[str, object]]:
+    programs: list[dict[str, object]] = []
+    for bf_path in bf_paths:
+        if not bf_path.is_file():
+            raise FileNotFoundError(f"{bf_path} not found")
+        programs.append(load_program(bf_path))
+    validate_export_uniqueness(programs)
+    return programs
+
+
 def generate_program_block(program: dict[str, object]) -> str:
     bf_path = program["path"]
     code = program["code"]
@@ -279,15 +308,11 @@ def main() -> int:
     args = parser.parse_args()
 
     programs: list[dict[str, object]] = []
-    for bf_path in args.inputs:
-        if not bf_path.is_file():
-            print(f"error: {bf_path} not found", file=sys.stderr)
-            return 1
-        try:
-            programs.append(load_program(bf_path))
-        except ValueError as exc:
-            print(f"error: {exc}", file=sys.stderr)
-            return 1
+    try:
+        programs = load_programs(list(args.inputs))
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(generate_asm(programs), encoding="utf-8")
