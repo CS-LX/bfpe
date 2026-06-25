@@ -27,7 +27,7 @@ BFPE 不是 Brainfuck 解释器的普通打包，而是：
 
 ## 项目状态
 
-🚧 **规划 / 早期开发** — runtime 与验收逻辑继承自 reference；独立 CLI 与签名 DSL 待实现。
+🚧 **Phase 0 已完成** — `bfpe build` 可用；下一步 Phase 1（签名 DSL）。见 [docs/项目计划.md](docs/项目计划.md)。
 
 | 能力 | reference | bfpe 目标 |
 |------|-----------|-----------|
@@ -188,6 +188,14 @@ cd build/bin/Release
 .\test_host.exe
 ```
 
+**bfpe Phase 0（当前可用）：**
+
+```powershell
+python tools/bfpe.py build examples/hello_world.bf -o build/hello_world.dll
+```
+
+输入 `.bf` 须含 `; bfdll: export=output`（Phase 1 将迁移为 `; bfpe:` DSL）。
+
 ---
 
 ## 架构一览
@@ -215,6 +223,8 @@ cd build/bin/Release
 
 | 文档 | 说明 |
 |------|------|
+| [docs/项目计划.md](docs/项目计划.md) | 分阶段实施计划（Phase 0–3） |
+| [docs/plans/phase-0.md](docs/plans/phase-0.md) | Phase 0：最小 build 闭环 |
 | [docs/可行性报告.md](docs/可行性报告.md) | BFPE 四项需求的可行性分析与实施路线 |
 | [reference/Brainfuck-in-PE/docs/实验报告.md](reference/Brainfuck-in-PE/docs/实验报告.md) | reference 实验结论与验收记录 |
 | [reference/Brainfuck-in-PE/docs/实现方案.md](reference/Brainfuck-in-PE/docs/实现方案.md) | PE 布局与模块设计（bfpe 继承） |

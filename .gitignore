@@ -1,1 +1,6 @@
 .kagent/
+.bfpe-build/
+build/
+*.obj
+*.exp
+*.lib
