@@ -1,3 +1,4 @@
-; bfdll: export=output
-; Classic Brainfuck "Hello World!" (outputs trailing newline; stub trims on return)
+; bfpe: export=HelloWorld
+; bfpe: const char* hello_world(void)
+; bfpe: io=buffer
 ++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++.

@@ -1,5 +1,6 @@
 #include "bf_io.h"
 
+#include <stdio.h>
 #include <windows.h>
 
 #include <stdint.h>
@@ -11,11 +12,13 @@ static __declspec(thread) char g_output_buffer[BF_IO_BUFFER_SIZE];
 static __declspec(thread) size_t g_output_length;
 static __declspec(thread) bf_output_callback_t g_output_callback;
 static __declspec(thread) void* g_output_callback_user;
+static __declspec(thread) bf_io_mode_t g_io_mode = BF_IO_MODE_BUFFER;
 
 void bf_io_init(void)
 {
     g_output_length = 0;
     g_output_buffer[0] = '\0';
+    g_io_mode = BF_IO_MODE_BUFFER;
 }
 
 void bf_io_shutdown(void)
@@ -24,12 +27,18 @@ void bf_io_shutdown(void)
     g_output_buffer[0] = '\0';
     g_output_callback = NULL;
     g_output_callback_user = NULL;
+    g_io_mode = BF_IO_MODE_BUFFER;
 }
 
 void bf_io_reset(void)
 {
     g_output_length = 0;
     g_output_buffer[0] = '\0';
+}
+
+void bf_io_bind_mode(bf_io_mode_t mode)
+{
+    g_io_mode = mode;
 }
 
 void bf_io_set_output_callback(bf_output_callback_t callback, void* user)
@@ -43,13 +52,26 @@ __declspec(dllexport) void __cdecl BF_SetOutputCallback(bf_output_callback_t cal
     bf_io_set_output_callback(callback, user);
 }
 
-void bf_io_write(bf_vm_t* vm, uint8_t byte)
+static void bf_io_buffer_byte(uint8_t byte)
 {
-    (void)vm;
     if (g_output_length + 1 < BF_IO_BUFFER_SIZE) {
         g_output_buffer[g_output_length++] = (char)byte;
         g_output_buffer[g_output_length] = '\0';
     }
+}
+
+void bf_io_write(bf_vm_t* vm, uint8_t byte)
+{
+    (void)vm;
+
+    if (g_io_mode == BF_IO_MODE_BUFFER || g_io_mode == BF_IO_MODE_STDIO) {
+        bf_io_buffer_byte(byte);
+    }
+
+    if (g_io_mode == BF_IO_MODE_STDIO) {
+        fputc((int)byte, stdout);
+    }
+
     if (g_output_callback) {
         g_output_callback(byte, g_output_callback_user);
     }
@@ -57,13 +79,23 @@ void bf_io_write(bf_vm_t* vm, uint8_t byte)
 
 uint8_t bf_io_read(bf_vm_t* vm)
 {
+    int ch;
+
     (void)vm;
+
+    if (g_io_mode == BF_IO_MODE_STDIO) {
+        ch = getchar();
+        return (ch == EOF) ? 0 : (uint8_t)ch;
+    }
+
     return 0;
 }
 
 void bf_io_flush(void)
 {
-    if (g_output_length > 0) {
+    if (g_io_mode == BF_IO_MODE_STDIO) {
+        fflush(stdout);
+    } else if (g_output_length > 0) {
         OutputDebugStringA(g_output_buffer);
     }
 }

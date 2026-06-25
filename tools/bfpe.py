@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""BFPE command-line tool — Phase 0: build single .bf to DLL."""
+"""BFPE command-line tool — build .bf sources into verified PE DLLs."""
 
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ VERIFY_SCRIPT = ROOT / "tools" / "verify_pe.ps1"
 RUNTIME_SOURCES = [
     RUNTIME / "vm" / "bf_vm.c",
     RUNTIME / "bf_io.c",
+    RUNTIME / "bf_export_runtime.c",
     RUNTIME / "bf_stub.c",
     RUNTIME / "dllmain.c",
 ]
@@ -136,7 +137,7 @@ def load_manifest_programs(manifest_path: Path) -> list[dict[str, object]]:
 
 def cmd_build(args: argparse.Namespace) -> int:
     if len(args.inputs) != 1:
-        eprint("error: Phase 0 supports exactly one .bf input")
+        eprint("error: build supports exactly one .bf input in Phase 1")
         return 1
 
     bf_path = args.inputs[0].resolve()
@@ -146,7 +147,7 @@ def cmd_build(args: argparse.Namespace) -> int:
         eprint(f"error: {bf_path} not found")
         return 1
     if output.suffix.lower() != ".dll":
-        eprint("error: Phase 0 output must be a .dll file")
+        eprint("error: output must be a .dll file")
         return 1
 
     build_dir = ROOT / ".bfpe-build" / output.stem

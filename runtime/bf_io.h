@@ -5,9 +5,16 @@
 
 typedef void (__cdecl *bf_output_callback_t)(uint8_t byte, void* user);
 
+typedef enum {
+    BF_IO_MODE_BUFFER = 0,
+    BF_IO_MODE_STDIO,
+    BF_IO_MODE_NONE,
+} bf_io_mode_t;
+
 void bf_io_init(void);
 void bf_io_shutdown(void);
 void bf_io_reset(void);
+void bf_io_bind_mode(bf_io_mode_t mode);
 void bf_io_set_output_callback(bf_output_callback_t callback, void* user);
 void bf_io_write(bf_vm_t* vm, uint8_t byte);
 uint8_t bf_io_read(bf_vm_t* vm);

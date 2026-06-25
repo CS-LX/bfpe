@@ -1,6 +1,7 @@
 .kagent/
 .bfpe-build/
 build/
+__pycache__/
 *.obj
 *.exp
 *.lib

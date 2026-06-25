@@ -8,9 +8,10 @@ import json
 import sys
 from pathlib import Path
 
+from parse_sig import Signature, parse_file
+
 BF_CHARS = set("+-<>[],.")
 CHUNK_SIZE = 64
-EXPORT_OUTPUT_DIRECTIVE = "bfdll: export=output"
 
 
 def strip_comments(source: str) -> str:
@@ -26,18 +27,6 @@ def strip_bf(source: str) -> str:
     return "".join(ch for ch in strip_comments(source) if ch in BF_CHARS)
 
 
-def name_from_path(path: Path) -> str:
-    return "BF_Prog_" + path.stem.replace("-", "_").title().replace("_", "")
-
-
-def export_name_from_path(path: Path) -> str:
-    return "BF_" + path.stem.replace("-", "_").title().replace("_", "")
-
-
-def is_output_export(source: str) -> bool:
-    return any(EXPORT_OUTPUT_DIRECTIVE in line for line in source.splitlines())
-
-
 def emit_db_lines(code: str) -> list[str]:
     lines: list[str] = []
     for i in range(0, len(code), CHUNK_SIZE):
@@ -50,14 +39,16 @@ def emit_db_lines(code: str) -> list[str]:
 
 def load_program(bf_path: Path) -> dict[str, object]:
     source = bf_path.read_text(encoding="utf-8")
+    sig = parse_file(bf_path)
     code = strip_bf(source)
     return {
         "path": bf_path,
         "source_name": bf_path.name,
         "source": source,
         "code": code,
-        "program_symbol": name_from_path(bf_path),
-        "export_symbol": export_name_from_path(bf_path) if is_output_export(source) else None,
+        "signature": sig,
+        "program_symbol": sig.program_symbol,
+        "export_symbol": sig.export_symbol,
         "core_pattern": code[:64] if len(code) >= 16 else code,
     }
 
@@ -88,13 +79,55 @@ def generate_asm(programs: list[dict[str, object]]) -> str:
     )
 
 
-def generate_header(programs: list[dict[str, object]]) -> str:
-    declarations: list[str] = []
-    for program in programs:
-        export_symbol = program["export_symbol"]
-        if export_symbol:
-            declarations.append(f"BFDLL_API const char* __cdecl {export_symbol}(void);")
+def c_return_type(sig: Signature) -> str:
+    if sig.return_type == "const char*":
+        return "const char*"
+    return sig.return_type
 
+
+def generate_header_decl(sig: Signature) -> str:
+    params = ", ".join(f"int {param.name}" for param in sig.params)
+    return f"BFDLL_API {c_return_type(sig)} __cdecl {sig.export_symbol}({params})"
+
+
+def generate_export_body(sig: Signature, program_symbol: str) -> list[str]:
+    io_mode = sig.io_mode_c
+    if sig.return_type == "int":
+        if sig.params:
+            arg_names = ", ".join(param.name for param in sig.params)
+            return [
+                f"int __cdecl {sig.export_symbol}({', '.join(f'int {p.name}' for p in sig.params)})",
+                "{",
+                f"    const int args[] = {{ {arg_names} }};",
+                f"    return bfpe_run_int_program({program_symbol}, {io_mode}, args, {len(sig.params)});",
+                "}",
+            ]
+        return [
+            f"int __cdecl {sig.export_symbol}(void)",
+            "{",
+            f"    return bfpe_run_int_program({program_symbol}, {io_mode}, NULL, 0);",
+            "}",
+        ]
+
+    if sig.return_type == "const char*":
+        return [
+            f"const char* __cdecl {sig.export_symbol}(void)",
+            "{",
+            f"    return bfpe_run_string_program({program_symbol}, {io_mode});",
+            "}",
+        ]
+
+    return [
+        f"void __cdecl {sig.export_symbol}(void)",
+        "{",
+        f"    bfpe_run_void_program({program_symbol}, {io_mode});",
+        "}",
+    ]
+
+
+def generate_header(programs: list[dict[str, object]]) -> str:
+    sigs = [program["signature"] for program in programs]
+    declarations = [generate_header_decl(sig) + ";" for sig in sigs]
     body = "\n".join(declarations) if declarations else "/* No generated exports. */"
     return (
         "/* AUTO-GENERATED - DO NOT EDIT */\n"
@@ -130,32 +163,19 @@ def generate_source(programs: list[dict[str, object]]) -> str:
     ]
 
     for program in programs:
-        export_symbol = program["export_symbol"]
-        if not export_symbol:
-            continue
+        sig: Signature = program["signature"]
         program_symbol = program["program_symbol"]
-        parts.extend(
-            [
-                f"extern const char {program_symbol}[];",
-                "",
-                f"const char* __cdecl {export_symbol}(void)",
-                "{",
-                f"    return bfdll_run_output_program({program_symbol});",
-                "}",
-                "",
-            ]
-        )
+        parts.append(f"extern const char {program_symbol}[];")
+        parts.append("")
+        parts.extend(generate_export_body(sig, program_symbol))
+        parts.append("")
 
     return "\n".join(parts)
 
 
 def build_manifest(programs: list[dict[str, object]], dll_path: Path) -> dict[str, object]:
     runtime_exports = ["BF_GetLastOutput", "BF_SetOutputCallback"]
-    generated_exports = [
-        str(program["export_symbol"])
-        for program in programs
-        if program.get("export_symbol")
-    ]
+    generated_exports = [str(program["export_symbol"]) for program in programs]
     return {
         "pe_path": str(dll_path.resolve()),
         "pe_kind": "dll",
@@ -166,6 +186,8 @@ def build_manifest(programs: list[dict[str, object]], dll_path: Path) -> dict[st
                 "program_symbol": program["program_symbol"],
                 "export_symbol": program["export_symbol"],
                 "core_pattern": program["core_pattern"],
+                "return_type": program["signature"].return_type,
+                "io_mode": program["signature"].io_mode,
             }
             for program in programs
         ],
@@ -187,14 +209,11 @@ def main() -> int:
         if not bf_path.is_file():
             print(f"error: {bf_path} not found", file=sys.stderr)
             return 1
-        program = load_program(bf_path)
-        if not program["export_symbol"]:
-            print(
-                f"error: {bf_path} missing '; bfdll: export=output' (Phase 0 export directive)",
-                file=sys.stderr,
-            )
+        try:
+            programs.append(load_program(bf_path))
+        except ValueError as exc:
+            print(f"error: {exc}", file=sys.stderr)
             return 1
-        programs.append(program)
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(generate_asm(programs), encoding="utf-8")
