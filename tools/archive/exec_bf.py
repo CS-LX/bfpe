@@ -142,3 +142,14 @@ def exec_bf(bf_path: Path, run_args: list[str]) -> int:
             sys.stdout.flush()
 
     return 0
+
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("usage: exec_bf.py <file.bf> [args...]", file=sys.stderr)
+        raise SystemExit(1)
+    try:
+        raise SystemExit(exec_bf(Path(sys.argv[1]), sys.argv[2:]))
+    except (BfError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        raise SystemExit(1)

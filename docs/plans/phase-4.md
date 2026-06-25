@@ -1,6 +1,6 @@
 # Phase 4 — 原生 CLI（C++ `bfpe.exe`）
 
-> 状态：**未开始**  
+> 状态：**4a + 4b 已完成**  
 > 前置：**Phase 3 完成**（多 `.bf`、`bfpe exec`、DSL 与 manifest 形态稳定后再移植）
 
 ---
@@ -54,27 +54,27 @@
 
 ### Phase 4a — 原生驱动（仍用 Python codegen）
 
-| # | 任务 | 产出 |
-|---|------|------|
-| 4a.1 | CMake 工程 `src/cli/` 或 `tools/native/` | 可构建的 `bfpe.exe` |
-| 4a.2 | 参数解析：`build` / `run` / 简写 | 与 `bfpe.py` 行为一致 |
-| 4a.3 | MSVC 环境初始化 | 等价于现 `msvc_env()` + `resolve_tool()` |
-| 4a.4 | 调用 `python tools/codegen/bf2asm.py` | subprocess，manifest 路径不变 |
-| 4a.5 | 链接编排（DLL/EXE 分支） | 复用现 `.def` / `/MERGE:bf_text=.text` 逻辑 |
-| 4a.6 | 构建后调用 `verify_pe.ps1` | 或 4b 再原生化 |
-| 4a.7 | `run`：`LoadLibrary` + 导出调用；EXE `CreateProcess` | 等价 `run_pe.py` |
-| 4a.8 | 安装/分发说明 | 仓库内 `build/bin/bfpe.exe` 或 Release 产物 |
+| # | 任务 | 产出 | 状态 |
+|---|------|------|------|
+| 4a.1 | CMake 工程 `src/cli/` | 可构建的 `bfpe.exe` | ✅ |
+| 4a.2 | 参数解析：`build` / `run` / `exec` / 简写 | 与 `bfpe.py` 行为一致 | ✅ |
+| 4a.3 | MSVC 环境初始化 | `vcvars64` + `cmd /c` 编排 | ✅ |
+| 4a.4 | 调用 `python tools/codegen/bf2asm.py` | subprocess，manifest 路径不变 | ✅ |
+| 4a.5 | 链接编排（DLL/EXE 分支） | 复用 `.def` / `/MERGE:bf_text=.text` | ✅ |
+| 4a.6 | 构建后调用 `verify_pe.ps1` | PowerShell 验收 | ✅ |
+| 4a.7 | `run`：LoadLibrary + 导出；EXE CreateProcess | 等价 `run_pe.py` | ✅ |
+| 4a.8 | 安装/分发说明 | `build-native/bin/bfpe.exe` | ✅ |
 
 ### Phase 4b — 全原生 codegen（去掉 Python）
 
 | # | 任务 | 产出 |
 |---|------|------|
-| 4b.1 | C++ 移植 `parse_sig` | `src/codegen/parse_sig.{h,cpp}` + 测试 |
-| 4b.2 | C++ 移植 `bf2asm` | 生成 asm / stub.c / def / exe_main / manifest |
-| 4b.3 | 移除 4a 对 Python 的 subprocess 依赖 | `bfpe.exe` 单二进制 + `runtime/` |
-| 4b.4 | （可选）C++ 移植 `verify_pe` 核心检查 | 替代 PowerShell，便于 CI 无 PS 依赖 |
-| 4b.5 | 静态检查：runtime 无 BF 字面量 | 并入 verify 或独立 `bfpe verify` |
-| 4b.6 | 弃用或归档 `tools/bfpe.py` | README 以 `bfpe.exe` 为准；Python 可留 `scripts/` 对照 |
+| 4b.1 | C++ 移植 `parse_sig` | `src/codegen/parse_sig.{h,cpp}` + 测试 | ✅ |
+| 4b.2 | C++ 移植 `bf2asm` | 生成 asm / stub.c / manifest | ✅ |
+| 4b.3 | 移除 Python subprocess 依赖 | `bfpe.exe` 单二进制 + `runtime/` | ✅ |
+| 4b.4 | （可选）C++ 移植 `verify_pe` 核心检查 | 仍用 PowerShell | 跳过 |
+| 4b.5 | 静态检查：runtime 无 BF 字面量 | verify 脚本 | 沿用 |
+| 4b.6 | 归档 Python 工具链 | `tools/archive/` | ✅ |
 
 ---
 
@@ -136,17 +136,21 @@ Phase 4 **依赖** Phase 3 冻结的：
 ### 4a 验收
 
 ```powershell
-# 未安装 Python 的机器上仍可 build 失败；开发机验收：
-bfpe.exe build examples/add.bf -o build/add.dll
-bfpe.exe run build/add.dll Add 3 5
+cmake -S . -B build-native -G "Visual Studio 17 2022" -A x64
+cmake --build build-native --config Release
+
+build-native\bin\bfpe.exe build examples/add.bf -o build/add.dll
+build-native\bin\bfpe.exe run build/add.dll Add 3 5
 # 期望：8
 
-bfpe.exe build examples/hello.bf -o build/hello.exe
-bfpe.exe run build/hello.exe Hello
+build-native\bin\bfpe.exe build examples/hello.bf -o build/hello.exe
+build-native\bin\bfpe.exe run build/hello.exe Hello
 # 期望 stdout：Hi
 
 verify_pe.ps1 对 DLL/EXE 全部 [OK]
 ```
+
+**说明：** 4a 的 `build` / `exec` 仍需要 Python（调用 `bf2asm.py` / `exec_bf.py`）；`run` 已纯原生。
 
 - `bfpe.exe` 行为与 `python tools/bfpe.py` 一致（同一 manifest / 同一 build 目录布局）
 - 构建产物仍通过五项合规检查

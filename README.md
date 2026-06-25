@@ -27,7 +27,7 @@ BFPE 不是 Brainfuck 解释器的普通打包，而是：
 
 ## 项目状态
 
-🚧 **Phase 3 已完成** — 多 `.bf` 单 PE、`bfpe exec`、CI；下一步 Phase 4（原生 CLI）。见 [docs/项目计划.md](docs/项目计划.md)。
+🚧 **Phase 4 已完成** — 原生 C++ `bfpe.exe`（build / run / exec），**无需 Python**。见 [docs/项目计划.md](docs/项目计划.md)。
 
 | 能力 | reference | bfpe 目标 |
 |------|-----------|-----------|
@@ -36,7 +36,7 @@ BFPE 不是 Brainfuck 解释器的普通打包，而是：
 | 输出缓冲 / 回调 | ✅ | ✅ I/O 流 |
 | 输入 `,` | ❌（恒 0） | ✅ stdin / 回调 |
 | 注释声明签名 | 部分（`export=output`） | ✅ 完整 DSL |
-| 命令行 `bfpe` | ❌（CMake 工程） | ✅ Python CLI |
+| 命令行 `bfpe` | ❌（CMake 工程） | ✅ 原生 `bfpe.exe` |
 | 生成 EXE | ❌ | ✅ |
 | 多 `.bf` 单 PE | ❌ | ✅ |
 | 内存调试 `exec` | ❌ | ✅ |
@@ -161,11 +161,13 @@ bfpe/
 │   └── 可行性报告.md          项目可行性分析
 ├── reference/
 │   └── Brainfuck-in-PE/       Git 子模块：实验 reference 实现
-├── runtime/                   VM、I/O、Stub（自 reference 提取/演进）
+├── src/
+│   ├── cli/                   bfpe.exe（build / run / exec）
+│   └── codegen/               parse_sig + bf2asm + 内存 VM
+├── runtime/                   VM、I/O、Stub
 ├── tools/
-│   ├── bfpe.py                CLI 入口（规划）
-│   ├── codegen/               签名解析、asm/stub 生成
-│   └── verify_pe.ps1          PE 合规验收（由 reference 泛化）
+│   ├── verify_pe.ps1          PE 合规验收
+│   └── archive/               已归档 Python 工具链
 ├── templates/                 链接用 runtime 源码模板
 ├── examples/                  示例 .bf 与用法
 └── README.md
@@ -173,49 +175,41 @@ bfpe/
 
 ---
 
-## 构建要求（规划）
+## 构建要求
 
 - Windows 10/11 x64
 - Visual Studio 2022（MSVC v143、`ml64`、`link`）
-- Python 3.10+（CLI / codegen）
-- CMake 3.20+（可选，用于 runtime 静态库）
+- CMake 3.20+（构建 `bfpe.exe`）
+- PowerShell（构建后 `verify_pe.ps1` 验收）
 
-reference 子模块可先独立验证：
-
-```powershell
-git submodule update --init --recursive
-
-cd reference/Brainfuck-in-PE
-cmake -S . -B build -G "Visual Studio 17 2022" -A x64
-cmake --build build --config Release
-cd build/bin/Release
-.\test_host.exe
-```
-
-**bfpe build / run / exec（Phase 3）：**
+### 构建 `bfpe.exe`
 
 ```powershell
-# 单导出 DLL
-python tools/bfpe.py build examples/add.bf -o build/add.dll
-python tools/bfpe.py run build/add.dll Add 3 5          # 输出 8
-
-# 多导出单 DLL
-python tools/bfpe.py build examples/add.bf examples/hello_world.bf -o build/bfpe_lib.dll
-python tools/bfpe.py run build/bfpe_lib.dll Add 3 5
-python tools/bfpe.py run build/bfpe_lib.dll HelloWorld
-
-# 内存调试（不写 PE）
-python tools/bfpe.py exec examples/add.bf 3 5           # 输出 8
-
-# EXE
-python tools/bfpe.py build examples/hello.bf -o build/hello.exe
-python tools/bfpe.py run build/hello.exe Hello          # stdout: Hi
-
-# 简写
-python tools/bfpe.py examples/add.bf -o build/add.dll
-python tools/bfpe.py examples/add.bf 3 5 build/add.dll
-python tools/bfpe.py examples/add.bf 3 5                # 等同 exec
+cmake -S . -B build-native -G "Visual Studio 17 2022" -A x64
+cmake --build build-native --config Release
+ctest --test-dir build-native -C Release
+# 产物：build-native/bin/bfpe.exe
 ```
+
+从仓库根目录运行；`bfpe.exe` 会自动向上查找含 `tools/verify_pe.ps1` 的目录，也可设置 `BFPE_ROOT`。
+
+### 构建 BFPE 产物（DLL/EXE）
+
+```powershell
+build-native\bin\bfpe.exe build examples/add.bf -o build/add.dll
+build-native\bin\bfpe.exe run build/add.dll Add 3 5          # 输出 8（测 DLL 用）
+
+build-native\bin\bfpe.exe build examples/add.bf examples/hello_world.bf -o build/bfpe_lib.dll
+build-native\bin\bfpe.exe run build/bfpe_lib.dll HelloWorld
+
+build-native\bin\bfpe.exe exec examples/add.bf 3 5           # 内存调试，输出 8
+
+# EXE：build 后直接运行产物
+build-native\bin\bfpe.exe build examples/hello.bf -o build/hello.exe
+.\build\hello.exe                                            # stdout: Hi
+```
+
+旧 Python 工具链已移至 [tools/archive/](tools/archive/)（只读对照）。
 
 `.bf` 头部使用 `; bfpe:` 签名 DSL；生成 `.exe` 须含 `; bfpe: entry`。
 
@@ -251,6 +245,7 @@ python tools/bfpe.py examples/add.bf 3 5                # 等同 exec
 | [docs/plans/phase-1.md](docs/plans/phase-1.md) | Phase 1：签名 DSL 与 I/O 流 |
 | [docs/plans/phase-2.md](docs/plans/phase-2.md) | Phase 2：build/run 闭环 + EXE |
 | [docs/plans/phase-3.md](docs/plans/phase-3.md) | Phase 3：多 `.bf` 单 PE、`exec`、CI |
+| [docs/plans/phase-4.md](docs/plans/phase-4.md) | Phase 4：C++ `bfpe.exe`（4a 驱动 / 4b 全原生） |
 | [docs/可行性报告.md](docs/可行性报告.md) | BFPE 四项需求的可行性分析与实施路线 |
 | [reference/Brainfuck-in-PE/docs/实验报告.md](reference/Brainfuck-in-PE/docs/实验报告.md) | reference 实验结论与验收记录 |
 | [reference/Brainfuck-in-PE/docs/实现方案.md](reference/Brainfuck-in-PE/docs/实现方案.md) | PE 布局与模块设计（bfpe 继承） |

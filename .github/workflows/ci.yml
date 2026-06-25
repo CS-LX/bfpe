@@ -13,25 +13,25 @@ jobs:
         with:
           submodules: recursive
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Unit tests
+      - name: Build bfpe.exe and run codegen tests
         shell: pwsh
         run: |
-          python tools/codegen/test_parse_sig.py
-          python tools/codegen/test_bf2asm.py
+          cmake -S . -B build-native -G "Visual Studio 17 2022" -A x64
+          cmake --build build-native --config Release
+          ctest --test-dir build-native -C Release --output-on-failure
 
-      - name: Build multi-export DLL
+      - name: Build and verify multi-export DLL
         shell: pwsh
         run: |
-          python tools/bfpe.py build examples/add.bf examples/hello_world.bf -o build/bfpe_lib.dll
+          .\build-native\bin\bfpe.exe build examples/add.bf examples/hello_world.bf -o build/bfpe_lib.dll
 
-      - name: exec and run
+      - name: exec, run, and EXE smoke test
         shell: pwsh
         run: |
-          $out = python tools/bfpe.py exec examples/add.bf 3 5
+          $out = .\build-native\bin\bfpe.exe exec examples/add.bf 3 5
           if ($out -ne "8") { throw "exec add: expected 8, got $out" }
-          $out = python tools/bfpe.py run build/bfpe_lib.dll Add 3 5
+          $out = .\build-native\bin\bfpe.exe run build/bfpe_lib.dll Add 3 5
           if ($out -ne "8") { throw "run Add: expected 8, got $out" }
+          .\build-native\bin\bfpe.exe build examples/hello.bf -o build/hello.exe
+          $out = .\build\hello.exe
+          if ($out -ne "Hi") { throw "hello.exe: expected Hi, got $out" }
