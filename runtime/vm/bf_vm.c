@@ -35,10 +35,11 @@ static int is_bf_char(char c)
 
 static bf_status_t build_jump_table(const char* code, size_t** out_pairs, size_t* out_count)
 {
-    size_t capacity = 16;
+    size_t stack_cap = 16;
+    size_t pairs_cap = 16;
     size_t count = 0;
-    size_t* pairs = (size_t*)malloc(capacity * 2 * sizeof(size_t));
-    size_t* stack = (size_t*)malloc(capacity * sizeof(size_t));
+    size_t* pairs = (size_t*)malloc(pairs_cap * 2 * sizeof(size_t));
+    size_t* stack = (size_t*)malloc(stack_cap * sizeof(size_t));
     size_t stack_top = 0;
     size_t ip = 0;
 
@@ -54,8 +55,8 @@ static bf_status_t build_jump_table(const char* code, size_t** out_pairs, size_t
         }
 
         if (code[ip] == '[') {
-            if (stack_top >= capacity) {
-                size_t new_cap = capacity * 2;
+            if (stack_top >= stack_cap) {
+                size_t new_cap = stack_cap * 2;
                 size_t* new_stack = (size_t*)realloc(stack, new_cap * sizeof(size_t));
                 if (!new_stack) {
                     free(pairs);
@@ -63,7 +64,7 @@ static bf_status_t build_jump_table(const char* code, size_t** out_pairs, size_t
                     return BF_ERR_IO;
                 }
                 stack = new_stack;
-                capacity = new_cap;
+                stack_cap = new_cap;
             }
             stack[stack_top++] = ip;
             continue;
@@ -76,8 +77,8 @@ static bf_status_t build_jump_table(const char* code, size_t** out_pairs, size_t
         }
 
         size_t open = stack[--stack_top];
-        if (count >= capacity) {
-            size_t new_cap = capacity * 2;
+        if (count >= pairs_cap) {
+            size_t new_cap = pairs_cap * 2;
             size_t* new_pairs = (size_t*)realloc(pairs, new_cap * 2 * sizeof(size_t));
             if (!new_pairs) {
                 free(pairs);
@@ -85,7 +86,7 @@ static bf_status_t build_jump_table(const char* code, size_t** out_pairs, size_t
                 return BF_ERR_IO;
             }
             pairs = new_pairs;
-            capacity = new_cap;
+            pairs_cap = new_cap;
         }
 
         pairs[count * 2] = open;
