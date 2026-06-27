@@ -14,12 +14,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
       - name: Build bfpe.exe
         shell: pwsh
         run: |
-          cmake -S . -B build-native -G "Visual Studio 17 2022" -A x64
-          cmake --build build-native --config Release
-          ctest --test-dir build-native -C Release --output-on-failure
+          $ErrorActionPreference = "Stop"
+          cmake -S . -B build-native -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-native
+          ctest --test-dir build-native --output-on-failure
           $exe = @(
             "build-native/bin/bfpe.exe",
             "build-native/bin/Release/bfpe.exe"
@@ -33,6 +39,7 @@ jobs:
       - name: Smoke test
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           New-Item -ItemType Directory -Force -Path build | Out-Null
           & $env:BFPE_EXE build examples/add.bf -o build/add.dll
           $out = & $env:BFPE_EXE exec examples/add.bf 3 5
@@ -41,6 +48,7 @@ jobs:
       - name: Pack portable zip
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           powershell -ExecutionPolicy Bypass -File tools/pack_portable.ps1 -BfpeExe $env:BFPE_EXE
           Copy-Item $env:BFPE_EXE dist/bfpe.exe
 
