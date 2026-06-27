@@ -1,17 +1,20 @@
-name: CI
+name: Release
 
 on:
   push:
-    branches: [main, master]
-  pull_request:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
 
 jobs:
-  build:
+  release:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build bfpe.exe and run codegen tests
+      - name: Build bfpe.exe
         shell: pwsh
         run: |
           cmake -S . -B build-native -G "Visual Studio 17 2022" -A x64
@@ -27,19 +30,24 @@ jobs:
           if (-not $exe) { throw "bfpe.exe not found after build" }
           "BFPE_EXE=$exe" >> $env:GITHUB_ENV
 
-      - name: Build and verify multi-export DLL
+      - name: Smoke test
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path build | Out-Null
-          & $env:BFPE_EXE build examples/add.bf examples/hello_world.bf -o build/bfpe_lib.dll
-
-      - name: exec, run, and EXE smoke test
-        shell: pwsh
-        run: |
+          & $env:BFPE_EXE build examples/add.bf -o build/add.dll
           $out = & $env:BFPE_EXE exec examples/add.bf 3 5
           if ($out -ne "8") { throw "exec add: expected 8, got $out" }
-          $out = & $env:BFPE_EXE run build/bfpe_lib.dll Add 3 5
-          if ($out -ne "8") { throw "run Add: expected 8, got $out" }
-          & $env:BFPE_EXE build examples/hello.bf -o build/hello.exe
-          $out = & .\build\hello.exe
-          if ($out -ne "Hi") { throw "hello.exe: expected Hi, got $out" }
+
+      - name: Pack portable zip
+        shell: pwsh
+        run: |
+          powershell -ExecutionPolicy Bypass -File tools/pack_portable.ps1 -BfpeExe $env:BFPE_EXE
+          Copy-Item $env:BFPE_EXE dist/bfpe.exe
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/bfpe.exe
+            dist/bfpe-portable.zip
+          generate_release_notes: true

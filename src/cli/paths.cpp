@@ -7,6 +7,22 @@
 
 namespace bfpe {
 
+namespace {
+
+bool is_bfpe_root(const std::filesystem::path& dir) {
+    return std::filesystem::exists(dir / "tools" / "verify_pe.ps1") &&
+           std::filesystem::exists(dir / "runtime" / "vm" / "bf_vm.c");
+}
+
+std::filesystem::path canonical_if_exists(const std::filesystem::path& dir) {
+    if (!is_bfpe_root(dir)) {
+        return {};
+    }
+    return std::filesystem::canonical(dir);
+}
+
+}  // namespace
+
 std::filesystem::path exe_directory() {
     wchar_t buffer[MAX_PATH]{};
     const DWORD length = GetModuleFileNameW(nullptr, buffer, MAX_PATH);
@@ -19,15 +35,20 @@ std::filesystem::path exe_directory() {
 std::filesystem::path find_repo_root() {
     if (const char* env_root = std::getenv("BFPE_ROOT")) {
         const std::filesystem::path configured = path_from_utf8(env_root);
-        if (std::filesystem::exists(configured / "tools" / "verify_pe.ps1")) {
-            return std::filesystem::canonical(configured);
+        if (const std::filesystem::path root = canonical_if_exists(configured); !root.empty()) {
+            return root;
         }
+    }
+
+    if (const std::filesystem::path beside_exe = canonical_if_exists(exe_directory());
+        !beside_exe.empty()) {
+        return beside_exe;
     }
 
     std::filesystem::path dir = exe_directory();
     for (int depth = 0; depth < 10; ++depth) {
-        if (std::filesystem::exists(dir / "tools" / "verify_pe.ps1")) {
-            return std::filesystem::canonical(dir);
+        if (const std::filesystem::path root = canonical_if_exists(dir); !root.empty()) {
+            return root;
         }
         if (!dir.has_parent_path() || dir.parent_path() == dir) {
             break;
@@ -36,8 +57,8 @@ std::filesystem::path find_repo_root() {
     }
 
     const std::filesystem::path cwd = std::filesystem::current_path();
-    if (std::filesystem::exists(cwd / "tools" / "verify_pe.ps1")) {
-        return std::filesystem::canonical(cwd);
+    if (const std::filesystem::path root = canonical_if_exists(cwd); !root.empty()) {
+        return root;
     }
 
     return cwd;

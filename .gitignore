@@ -3,6 +3,8 @@
 build/
 build-native/
 out/
+dist/
+test/
 __pycache__/
 *.obj
 *.exp
