@@ -27,7 +27,7 @@ BFPE 不是 Brainfuck 解释器的普通打包，而是：
 
 ## 项目状态
 
-🚧 **Phase 4 已完成** — 原生 C++ `bfpe.exe`（build / run / exec），**无需 Python**。见 [docs/项目计划.md](docs/项目计划.md)。
+**Phase 4 已完成** — 原生 C++ `bfpe.exe`（build / run / exec），**无需 Python / PowerShell**；Release 单文件 exe 内嵌 `runtime/`。见 [docs/项目计划.md](docs/项目计划.md)。
 
 | 能力 | reference | bfpe 目标 |
 |------|-----------|-----------|
@@ -114,7 +114,7 @@ bfpe run hello.dll Hello
 
 ---
 
-## 命令行（目标接口）
+## 命令行
 
 ```text
 bfpe build <file.bf> [file2.bf ...] -o <out.dll|out.exe>   构建 PE
@@ -153,22 +153,25 @@ BFPE 继承 reference 五项硬性约束，构建时强制检查：
 
 ---
 
-## 目录结构（规划）
+## 目录结构
 
 ```text
 bfpe/
 ├── docs/
-│   └── 可行性报告.md          项目可行性分析
+│   ├── 可行性报告.md
+│   ├── 项目计划.md
+│   └── plans/                 Phase 0–4 实施记录
 ├── reference/
 │   └── Brainfuck-in-PE/       Git 子模块：实验 reference 实现
 ├── src/
-│   ├── cli/                   bfpe.exe（build / run / exec）
+│   ├── cli/                   bfpe.exe（build / run / exec / verify_pe）
 │   └── codegen/               parse_sig + bf2asm + 内存 VM
 ├── runtime/                   VM、I/O、Stub
 ├── tools/
+│   ├── generate_embedded_bundle.py
+│   ├── pack_portable.ps1
 │   ├── verify_pe.ps1          可选：与内建验收逻辑对照（build 不再调用）
 │   └── archive/               已归档 Python 工具链
-├── templates/                 链接用 runtime 源码模板
 ├── examples/                  示例 .bf 与用法
 └── README.md
 ```
@@ -190,7 +193,7 @@ ctest --test-dir build-native -C Release
 # 产物：build-native/bin/bfpe.exe
 ```
 
-从仓库根目录运行；开发时自动用工作区 `runtime/`。仅拷贝 `bfpe.exe` 时，内嵌资源会解压到 `%LOCALAPPDATA%\\bfpe\\bundle\\`；也可设置 `BFPE_ROOT` 指向自定义目录。
+从仓库根目录运行；开发时自动用工作区 `runtime/`。仅拷贝 `bfpe.exe` 时，内嵌 `runtime/` 会解压到 `%LOCALAPPDATA%\\bfpe\\bundle\\`；构建中间产物在 `%LOCALAPPDATA%\\bfpe\\build\\`（验收通过后自动删除 `obj/`，保留 `manifest.json` 供 `run` 使用）。也可设置 `BFPE_ROOT` 指向自定义目录。
 
 ### 下载 Release
 
@@ -257,7 +260,7 @@ build-native\bin\bfpe.exe build examples/hello.bf -o build/hello.exe
 
 | 文档 | 说明 |
 |------|------|
-| [docs/项目计划.md](docs/项目计划.md) | 分阶段实施计划（Phase 0–3） |
+| [docs/项目计划.md](docs/项目计划.md) | 分阶段实施计划（Phase 0–4） |
 | [docs/plans/phase-0.md](docs/plans/phase-0.md) | Phase 0：最小 build 闭环 |
 | [docs/plans/phase-1.md](docs/plans/phase-1.md) | Phase 1：签名 DSL 与 I/O 流 |
 | [docs/plans/phase-2.md](docs/plans/phase-2.md) | Phase 2：build/run 闭环 + EXE |

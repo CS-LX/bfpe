@@ -38,9 +38,12 @@ Copy-Item (Resolve-RepoPath "tools/verify_pe.ps1") (Join-Path $portableRoot "too
 BFPE portable layout
 ====================
 
-Keep bfpe.exe, runtime/, and tools/ in the same folder, then run:
+Keep bfpe.exe and runtime/ in the same folder, then run:
 
   .\bfpe.exe build examples\add.bf -o add.dll
+
+Build runs built-in PE verification (no PowerShell required).
+tools/verify_pe.ps1 is included for manual cross-check only.
 
 Requires Visual Studio 2022 with C++ tools (ml64, cl, link).
 "@ | Set-Content -Encoding UTF8 (Join-Path $portableRoot "README-portable.txt")

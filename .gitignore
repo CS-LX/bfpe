@@ -5,6 +5,7 @@ build-native/
 out/
 dist/
 test/
+examples/poetry.bf
 __pycache__/
 *.obj
 *.exp
