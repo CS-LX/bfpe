@@ -19,10 +19,6 @@ std::filesystem::path runtime_dir(const std::filesystem::path& root) {
     return root / "runtime";
 }
 
-std::filesystem::path verify_script(const std::filesystem::path& root) {
-    return root / "tools" / "verify_pe.ps1";
-}
-
 std::filesystem::path build_dir_for_output(const std::filesystem::path& output) {
     return bfpe_cache_directory() / "build" / output.stem();
 }

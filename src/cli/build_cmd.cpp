@@ -6,6 +6,7 @@
 #include "parse_sig.hpp"
 #include "paths.hpp"
 #include "process.hpp"
+#include "verify_pe.hpp"
 
 #include <cctype>
 #include <fstream>
@@ -63,14 +64,6 @@ std::vector<std::string> read_program_symbols(const std::filesystem::path& manif
         symbols.push_back(program.program_symbol);
     }
     return symbols;
-}
-
-int run_or_fail(const std::vector<std::wstring>& args) {
-    const int code = run_process(args);
-    if (code != 0) {
-        return 1;
-    }
-    return 0;
 }
 
 int run_msvc_or_fail(const std::filesystem::path& vcvars, const std::vector<std::wstring>& args) {
@@ -248,14 +241,7 @@ int cmd_build(const std::filesystem::path& root,
         return 1;
     }
 
-    if (run_or_fail(
-            {L"powershell",
-             L"-ExecutionPolicy",
-             L"Bypass",
-             L"-File",
-             verify_script(root).wstring(),
-             L"-ManifestPath",
-             manifest_path.wstring()}) != 0) {
+    if (verify_pe_manifest(manifest_path) != 0) {
         return 1;
     }
 

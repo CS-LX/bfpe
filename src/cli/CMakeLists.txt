@@ -13,7 +13,6 @@ set(BFPE_EMBED_INPUTS
     "${CMAKE_SOURCE_DIR}/runtime/dllmain.c"
     "${CMAKE_SOURCE_DIR}/runtime/vm/bf_vm.c"
     "${CMAKE_SOURCE_DIR}/runtime/vm/bf_vm.h"
-    "${CMAKE_SOURCE_DIR}/tools/verify_pe.ps1"
     "${CMAKE_SOURCE_DIR}/tools/generate_embedded_bundle.py"
 )
 
@@ -38,6 +37,7 @@ add_executable(bfpe
     process.cpp
     msvc_env.cpp
     manifest.cpp
+    verify_pe.cpp
     build_cmd.cpp
     run_cmd.cpp
     exec_cmd.cpp

@@ -8,9 +8,11 @@
 namespace bfpe {
 
 struct ProgramInfo {
+    std::string source;
     std::string export_name;
     std::string export_symbol;
     std::string program_symbol;
+    std::string core_pattern;
     std::string return_type;
     int param_count = 0;
 };
@@ -18,6 +20,7 @@ struct ProgramInfo {
 struct Manifest {
     std::string pe_kind;
     std::string pe_path;
+    std::vector<std::string> exports;
     std::vector<ProgramInfo> programs;
 };
 

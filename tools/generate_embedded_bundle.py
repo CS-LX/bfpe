@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate C++ sources embedding runtime/ and tools/verify_pe.ps1 for standalone bfpe.exe."""
+"""Generate C++ sources embedding runtime/ for standalone bfpe.exe."""
 
 from __future__ import annotations
 
@@ -17,7 +17,6 @@ EMBED_PATHS = [
     "runtime/dllmain.c",
     "runtime/vm/bf_vm.c",
     "runtime/vm/bf_vm.h",
-    "tools/verify_pe.ps1",
 ]
 
 BUNDLE_VERSION = "1"

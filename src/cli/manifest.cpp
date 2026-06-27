@@ -76,6 +76,41 @@ std::optional<int> extract_int_field(const std::string& object, const std::strin
     return std::stoi(object.substr(start, end - start));
 }
 
+std::vector<std::string> extract_string_array(const std::string& json, const std::string& array_key) {
+    std::vector<std::string> values;
+    const std::string needle = "\"" + array_key + "\"";
+    const size_t key_pos = json.find(needle);
+    if (key_pos == std::string::npos) {
+        return values;
+    }
+    const size_t array_start = json.find('[', key_pos);
+    if (array_start == std::string::npos) {
+        return values;
+    }
+
+    size_t index = array_start + 1;
+    while (index < json.size()) {
+        while (index < json.size() && std::isspace(static_cast<unsigned char>(json[index])) != 0 &&
+               json[index] != '"' && json[index] != ']') {
+            ++index;
+        }
+        if (index >= json.size() || json[index] == ']') {
+            break;
+        }
+        if (json[index] != '"') {
+            break;
+        }
+        const size_t quote_start = index;
+        const size_t quote_end = json.find('"', quote_start + 1);
+        if (quote_end == std::string::npos) {
+            break;
+        }
+        values.push_back(json.substr(quote_start + 1, quote_end - quote_start - 1));
+        index = quote_end + 1;
+    }
+    return values;
+}
+
 std::vector<std::string> extract_objects(const std::string& json, const std::string& array_key) {
     std::vector<std::string> objects;
     const std::string needle = "\"" + array_key + "\"";
@@ -153,8 +188,13 @@ std::optional<Manifest> load_manifest(const std::filesystem::path& path) {
         manifest.pe_path = *pe_path;
     }
 
+    manifest.exports = extract_string_array(json, "exports");
+
     for (const std::string& object : extract_objects(json, "programs")) {
         ProgramInfo program;
+        if (auto source = extract_string_field(object, "source")) {
+            program.source = *source;
+        }
         if (auto export_name = extract_string_field(object, "export_name")) {
             program.export_name = *export_name;
         }
@@ -163,6 +203,9 @@ std::optional<Manifest> load_manifest(const std::filesystem::path& path) {
         }
         if (auto program_symbol = extract_string_field(object, "program_symbol")) {
             program.program_symbol = *program_symbol;
+        }
+        if (auto core_pattern = extract_string_field(object, "core_pattern")) {
+            program.core_pattern = *core_pattern;
         }
         if (auto return_type = extract_string_field(object, "return_type")) {
             program.return_type = *return_type;

@@ -17,8 +17,7 @@ namespace bfpe {
 namespace {
 
 bool is_bfpe_root(const std::filesystem::path& dir) {
-    return std::filesystem::exists(dir / "tools" / "verify_pe.ps1") &&
-           std::filesystem::exists(dir / "runtime" / "vm" / "bf_vm.c");
+    return std::filesystem::exists(dir / "runtime" / "vm" / "bf_vm.c");
 }
 
 std::filesystem::path canonical_if_exists(const std::filesystem::path& dir) {
