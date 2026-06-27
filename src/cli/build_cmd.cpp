@@ -131,7 +131,7 @@ int cmd_build(const std::filesystem::path& root,
         }
     }
 
-    const std::filesystem::path build_dir = build_dir_for_output(root, resolved_output);
+    const std::filesystem::path build_dir = build_dir_for_output(resolved_output);
     const std::filesystem::path gen_dir = build_dir / "gen";
     const std::filesystem::path obj_dir = build_dir / "obj";
     std::filesystem::create_directories(gen_dir);

@@ -51,6 +51,7 @@ jobs:
           $ErrorActionPreference = "Stop"
           powershell -ExecutionPolicy Bypass -File tools/pack_portable.ps1 -BfpeExe $env:BFPE_EXE
           Copy-Item $env:BFPE_EXE dist/bfpe.exe
+          # bfpe.exe is self-contained; zip mirrors embedded runtime/tools for inspection.
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

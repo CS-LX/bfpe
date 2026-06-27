@@ -1,6 +1,7 @@
 #include "cli.hpp"
 
 #include "build_cmd.hpp"
+#include "bundle.hpp"
 #include "exec_cmd.hpp"
 #include "parse_sig.hpp"
 #include "paths.hpp"

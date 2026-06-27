@@ -111,13 +111,14 @@ int cmd_run(const std::filesystem::path& root,
             const std::filesystem::path& pe_path,
             const std::string& export_name,
             const std::vector<std::string>& run_args) {
+    (void)root;
     const std::filesystem::path resolved_pe = std::filesystem::absolute(pe_path);
     if (!std::filesystem::exists(resolved_pe)) {
         print_error("error: PE not found: " + path_to_utf8(resolved_pe));
         return 1;
     }
 
-    const auto manifest = load_manifest(manifest_path_for_pe(root, resolved_pe));
+    const auto manifest = load_manifest(manifest_path_for_pe(resolved_pe));
     if (!manifest.has_value()) {
         print_error("error: rebuild with bfpe build ... -o " + path_to_utf8(resolved_pe.filename()));
         return 1;

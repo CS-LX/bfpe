@@ -191,22 +191,25 @@ ctest --test-dir build-native -C Release
 # 产物：build-native/bin/bfpe.exe
 ```
 
-从仓库根目录运行；`bfpe.exe` 会优先在 **exe 同目录** 查找 `runtime/` 与 `tools/verify_pe.ps1`，也可向上搜索或设置 `BFPE_ROOT`。
+从仓库根目录运行；开发时自动用工作区 `runtime/`。仅拷贝 `bfpe.exe` 时，内嵌资源会解压到 `%LOCALAPPDATA%\\bfpe\\bundle\\`；也可设置 `BFPE_ROOT` 指向自定义目录。
 
 ### 下载 Release
 
-GitHub Release 提供两个附件：
+GitHub Release 提供：
 
 | 文件 | 用途 |
 |------|------|
-| **`bfpe.exe`** | 单独可执行文件；`exec` / `run` 可用；**`build` 需配合 portable 包或完整仓库** |
-| **`bfpe-portable.zip`** | 绿色便携包：`bfpe.exe` + `runtime/` + `tools/verify_pe.ps1`，解压即可 `build`（仍需本机 VS2022） |
+| **`bfpe.exe`** | 单文件绿色版：`runtime/` 与 `tools/verify_pe.ps1` 已内嵌，首次 `build` 解压到 `%LOCALAPPDATA%\\bfpe\\`；仍需本机 **VS2022 C++ 工具链** |
+| **`bfpe-portable.zip`** | 可选：明文目录布局（与内嵌内容相同），便于查看/调试 |
 
-解压 portable 后：
+单独拷贝 **`bfpe.exe`** 即可：
 
 ```powershell
 .\bfpe.exe build examples\add.bf -o add.dll
+.\bfpe.exe exec examples\add.bf 3 5
 ```
+
+开发者在仓库内运行时仍优先使用工作区里的 `runtime/`（便于改 VM 后立刻测）。
 
 ### 构建 BFPE 产物（DLL/EXE）
 
